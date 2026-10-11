@@ -3,37 +3,46 @@ import asyncio
 from telethon import TelegramClient
 from telethon.tl.functions.channels import JoinChannelRequest
 
-# קריאת הנתונים הרגישים מתוך ההגדרות של Render (מונע חשיפה שלהם בגיטהאב)
+# קריאת הנתונים הרגישים מתוך ההגדרות של Render
 API_ID = os.getenv('TELEGRAM_API_ID')
 API_HASH = os.getenv('TELEGRAM_API_HASH')
-# הקישור לערוץ שביקשת
-TARGET_CHANNEL = 'https://t.me/ask_movie_MT'
+PHONE_NUMBER = os.getenv('TELEGRAM_PHONE')  # מספר הטלפון שלך
+TARGET_CHANNEL = 'https://t.me'
 
-# בדיקה שהגדרת את הנתונים ב-Render
-if not API_ID or not API_HASH:
-    print("❌ שגיאה: לא הגדרת את TELEGRAM_API_ID או TELEGRAM_API_HASH ב-Render!")
+if not API_ID or not API_HASH or not PHONE_NUMBER:
+    print("❌ שגיאה: לא הגדרת את TELEGRAM_API_ID, TELEGRAM_API_HASH או TELEGRAM_PHONE ב-Render!")
     exit(1)
 
-# יצירת הלקוח של טלגרם. הקובץ 'session_file.session' ייווצר אוטומטית ברגע שתתחבר בפעם הראשונה
-client = TelegramClient('session_file', int(API_ID), API_HASH)
+# שימוש בתיקייה זמנית ב-Render כדי לשמור את קובץ החיבור
+session_path = '/opt/render/project/src/session_file' if os.path.exists('/opt/render/project/src/') else 'session_file'
+client = TelegramClient(session_path, int(API_ID), API_HASH)
 
 async def main():
-    print("[*] מתחבר לטלגרם...")
+    print("[*] מתחיל תהליך התחברות לטלגרם...")
+    
+    # התחברות לשרתים
     await client.connect()
     
-    # בדיקה האם המשתמש כבר מחובר (מאומת)
+    # אם החשבון לא מחובר, נבקש קוד אימות דרך הטרמינל
     if not await client.is_user_authorized():
-        print("❌ החשבון אינו מחובר! יש להריץ את הקוד פעם אחת מקומית במחשב כדי להזין קוד אימות.")
-        return
+        print(f"[*] שולח קוד אימות למספר: {PHONE_NUMBER}")
+        await client.send_code_request(PHONE_NUMBER)
+        
+        # הקוד יעצור כאן ויחכה שתכתוב את הקוד ב-Render Console
+        code = input("🔄 הזן את קוד האימות שקיבלת מטלגרם בתוך האפליקציה: ")
+        try:
+            await client.sign_in(PHONE_NUMBER, code)
+            print("✅ החשבון אומת וחובר בהצלחה!")
+        except Exception as e:
+            print(f"❌ אימות נכשל: {e}")
+            return
 
     print(f"[*] מנסה להצטרף לערוץ: {TARGET_CHANNEL}...")
     try:
-        # שליחת בקשת הצטרפות לערוץ
         await client(JoinChannelRequest(TARGET_CHANNEL))
         print("✅ ההצטרפות הצליחה! המשתמש החדש מופיע כעת בערוץ.")
     except Exception as e:
-        print(f"❌ ההצטרפות נכשלה. שגיאה: {e}")
+        print(f"❌ ההצטרפות נכשלה: {e}")
 
-# הרצת התוכנית
 with client:
     client.loop.run_until_complete(main())
